@@ -43,7 +43,9 @@ namespace NUnit.Analyzers.ClassicModelAssertUsage
             {
                 // The tolerance argument should be renamed from 'delta' to 'amount' but with the model constraint the
                 // argument is moved to Within which makes it way more explicit so we can just drop the name colon.
-                var toleranceArgumentNoColon = arguments[2].WithNameColon(null);
+                var tolerancePosition = arguments.FindIndex(arg => arg.NameColon?.Name.Identifier.Text == "delta");
+                var toleranceArgument = tolerancePosition != -1 ? arguments[tolerancePosition] : arguments[2];
+                var toleranceArgumentNoColon = toleranceArgument.WithNameColon(null);
 
                 equalToInvocationNode = SyntaxFactory.InvocationExpression(
                     SyntaxFactory.MemberAccessExpression(
