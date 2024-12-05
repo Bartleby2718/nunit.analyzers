@@ -12,6 +12,12 @@ namespace NUnit.Analyzers.UseAssertThatAsync;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class UseAssertThatAsyncAnalyzer : BaseAssertionAnalyzer
 {
+    private static readonly string[] firstParameterCandidates =
+    {
+        NUnitFrameworkConstants.NameOfActualParameter,
+        NUnitFrameworkConstants.NameOfConditionParameter,
+    };
+
     private static readonly DiagnosticDescriptor descriptor = DiagnosticDescriptorCreator.Create(
         id: AnalyzerIdentifiers.UseAssertThatAsync,
         title: UseAssertThatAsyncConstants.Title,
@@ -32,12 +38,26 @@ public class UseAssertThatAsyncAnalyzer : BaseAssertionAnalyzer
         if (assertOperation.TargetMethod.Name != NUnitFrameworkConstants.NameOfAssertThat)
             return;
 
-        var arguments = assertOperation.Arguments;
+        var arguments = assertOperation.Arguments
+            .Where(a => a.ArgumentKind == ArgumentKind.Explicit) // filter out arguments that were not explicitly passed in
+            .ToArray();
 
-        var actualArgument = arguments.SingleOrDefault(a => a.Parameter?.Name == NUnitFrameworkConstants.NameOfActualParameter)
+        var actualArgument = arguments.SingleOrDefault(a => firstParameterCandidates.Contains(a.Parameter?.Name))
             ?? arguments[0];
         if (actualArgument.Syntax is not ArgumentSyntax argumentSyntax || argumentSyntax.Expression is not AwaitExpressionSyntax awaitExpression)
             return;
+
+        // Currently, Assert.ThatAsync does not support the Func<string> getExceptionMessage parameter.
+        // Therefore, do not touch overloads of Assert.That that has it.
+        var funcStringSymbol = context.Compilation.GetTypeByMetadataName("System.Func`1")?
+            .Construct(context.Compilation.GetSpecialType(SpecialType.System_String));
+        foreach (var argument in assertOperation.Arguments.Where(a => a != actualArgument))
+        {
+            if (SymbolEqualityComparer.Default.Equals(argument.Value.Type, funcStringSymbol))
+            {
+                return;
+            }
+        }
 
         // Verify that the awaited expression is generic
         var awaitedSymbol = context.Operation.SemanticModel?.GetSymbolInfo(awaitExpression.Expression).Symbol;

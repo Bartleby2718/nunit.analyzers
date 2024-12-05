@@ -131,7 +131,7 @@ public sealed class UseAssertThatAsyncCodeFixTests
     }
 
     [Test]
-    public void VerifyBoolAsSecondArgumentAndConstraint([Values] bool? configureAwaitValue)
+    public void VerifyIntAsSecondArgumentAndConstraint([Values] bool? configureAwaitValue)
     {
         var configurAwait = configureAwaitValue switch
         {
@@ -153,6 +153,32 @@ public sealed class UseAssertThatAsyncCodeFixTests
         }
 
         private static Task<int> GetIntAsync() => Task.FromResult(42);");
+        RoslynAssert.CodeFix(analyzer, fix, expectedDiagnostic, code, fixedCode);
+    }
+
+    [Test]
+    public void VerifyBoolAsSecondArgumentAndConstraint([Values] bool? configureAwaitValue)
+    {
+        var configurAwait = configureAwaitValue switch
+        {
+            null => string.Empty,
+            true => ".ConfigureAwait(true)",
+            false => ".ConfigureAwait(false)",
+        };
+        var code = TestUtility.WrapMethodInClassNamespaceAndAddUsings(@$"
+        public async Task Test()
+        {{
+            ↓Assert.That(message: ""message"", condition: await GetBoolAsync(){configurAwait});
+        }}
+
+        private static Task<bool> GetBoolAsync() => Task.FromResult(true);");
+        var fixedCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings(@"
+        public async Task Test()
+        {
+            await Assert.ThatAsync(() => GetBoolAsync(), Is.True, ""message"");
+        }
+
+        private static Task<bool> GetBoolAsync() => Task.FromResult(true);");
         RoslynAssert.CodeFix(analyzer, fix, expectedDiagnostic, code, fixedCode);
     }
 }

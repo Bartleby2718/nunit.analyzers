@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
@@ -38,6 +39,9 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
             return;
 
         var argumentList = assertThatInvocation.ArgumentList;
+
+        // The first parameter is usually the "actual" parameter, but sometimes it's the "condition" parameter.
+        // Since the order is not guaranteed, let's just call it "actualArgument" here.
         var actualArgument = argumentList.Arguments.SingleOrDefault(
             a => firstParameterCandidates.Contains(a.NameColon?.Name.Identifier.Text))
             ?? argumentList.Arguments[0];
@@ -59,19 +63,25 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
 
         // If there's only one argument, is must have been Assert.That(bool).
         // However, the overload Assert.ThatAsync(bool) doesn't exist, so add Is.True in that case.
-        var nonLambdaArguments = argumentList.Arguments.Count == 1
-            ? new[]
-            {
+        var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
+        if (semanticModel is null)
+            return;
+        var nonLambdaArguments = argumentList.Arguments
+            .Where(a => a != actualArgument)
+            .Select(a => a.WithNameColon(null))
+            .ToList();
+        var needToPrependIsTrue = !argumentList.Arguments.Any(a => ArgumentExtendsIResolveConstraint(a, semanticModel, context.CancellationToken));
+        if (needToPrependIsTrue)
+        {
+            nonLambdaArguments.Insert(
+                0,
                 SyntaxFactory.Argument(
-                SyntaxFactory.MemberAccessExpression(
-                    SyntaxKind.SimpleMemberAccessExpression,
-                    SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfIs),
-                    SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfIsTrue)))
-            }
-            : argumentList.Arguments
-                .Where(a => a != actualArgument)
-                .Select(a => a.WithNameColon(null))
-                .ToArray();
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfIs),
+                        SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfIsTrue))));
+        }
+
         var newArgumentList = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
                 new[] { SyntaxFactory.Argument(SyntaxFactory.ParenthesizedLambdaExpression(insideLambda)) }
@@ -87,5 +97,18 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
                 _ => Task.FromResult(context.Document.WithSyntaxRoot(newRoot)),
                 UseAssertThatAsyncConstants.Description),
             diagnostic);
+    }
+
+    private static bool ArgumentExtendsIResolveConstraint(ArgumentSyntax argumentSyntax, SemanticModel semanticModel, CancellationToken cancellationToken)
+    {
+        var argumentExpression = argumentSyntax.Expression;
+        var argumentTypeInfo = semanticModel.GetTypeInfo(argumentExpression, cancellationToken);
+        var argumentType = argumentTypeInfo.Type;
+
+        var iResolveConstraintSymbol = semanticModel.Compilation.GetTypeByMetadataName("NUnit.Framework.Constraints.IResolveConstraint");
+
+        return argumentType is not null
+            && iResolveConstraintSymbol is not null
+            && semanticModel.Compilation.ClassifyConversion(argumentType, iResolveConstraintSymbol).IsImplicit;
     }
 }

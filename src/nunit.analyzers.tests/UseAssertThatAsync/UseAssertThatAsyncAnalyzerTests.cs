@@ -53,6 +53,20 @@ public sealed class UseAssertThatAsyncAnalyzerTests
         RoslynAssert.Valid(analyzer, testCode);
     }
 
+    // do not touch because there is no ThatAsync equivalent
+    [Test]
+    public void AnalyzeWhenExceptionMessageIsFuncString()
+    {
+        var testCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings(@"
+        public async Task Test()
+        {
+            Assert.That(await GetBoolAsync(), () => ""message"");
+        }
+
+        private static Task<bool> GetBoolAsync() => Task.FromResult(true);");
+        RoslynAssert.Valid(analyzer, testCode);
+    }
+
     [Test]
     public void AnalyzeWhenAwaitIsNotUsedInLineForBool()
     {
@@ -87,8 +101,12 @@ public sealed class UseAssertThatAsyncAnalyzerTests
     }
 
     [Test]
-    public void AnalyzeWhenAwaitIsUsedInLineForBool([Values] bool? configureAwaitValue)
+    public void AnalyzeWhenAwaitIsUsedInLineForBool([Values] bool? configureAwaitValue, [Values] bool hasConstraint, [Values] bool hasMessage)
     {
+        bool @true = true;
+        Assert.That(@true);
+        System.Console.WriteLine(Assert.ThatAsync(() => System.Threading.Tasks.Task.FromResult(@true), Is.True).IsFaulted);
+        Assert.That(@true, Is.True);
         var configurAwait = configureAwaitValue switch
         {
             null => string.Empty,
@@ -98,7 +116,7 @@ public sealed class UseAssertThatAsyncAnalyzerTests
         var testCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings($@"
         public async Task Test()
         {{
-            Assert.That(await GetBoolAsync(){configurAwait}, Is.True);
+            Assert.That(await GetBoolAsync(){configurAwait}{(hasConstraint ? ", Is.True" : "")}{(hasConstraint ? @", ""message""" : "")});
         }}
 
         private static Task<bool> GetBoolAsync() => Task.FromResult(true);");
