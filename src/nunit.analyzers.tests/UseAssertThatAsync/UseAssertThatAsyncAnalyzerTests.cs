@@ -12,6 +12,12 @@ public sealed class UseAssertThatAsyncAnalyzerTests
 {
     private static readonly DiagnosticAnalyzer analyzer = new UseAssertThatAsyncAnalyzer();
     private static readonly ExpectedDiagnostic diagnostic = ExpectedDiagnostic.Create(AnalyzerIdentifiers.UseAssertThatAsync);
+    private static readonly string[] configureAwaitValues =
+    {
+        "",
+        ".ConfigureAwait(true)",
+        ".ConfigureAwait(false)",
+    };
 
     [Test]
     public void AnalyzeWhenIntResultIsUsed()
@@ -82,18 +88,12 @@ public sealed class UseAssertThatAsyncAnalyzerTests
     }
 
     [Test]
-    public void AnalyzeWhenAwaitIsUsedInLineForInt([Values] bool? configureAwaitValue)
+    public void AnalyzeWhenAwaitIsUsedInLineForInt([ValueSource(nameof(configureAwaitValues))] string configureAwait, [Values] bool hasMessage)
     {
-        var configurAwait = configureAwaitValue switch
-        {
-            null => string.Empty,
-            true => ".ConfigureAwait(true)",
-            false => ".ConfigureAwait(false)",
-        };
         var testCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings($@"
         public async Task Test()
         {{
-            Assert.That(await GetIntAsync(){configurAwait}, Is.EqualTo(42));
+            Assert.That(await GetIntAsync(){configureAwait}, Is.EqualTo(42){(hasMessage ? @", ""message""" : "")});
         }}
 
         private static Task<int> GetIntAsync() => Task.FromResult(42);");
@@ -101,22 +101,12 @@ public sealed class UseAssertThatAsyncAnalyzerTests
     }
 
     [Test]
-    public void AnalyzeWhenAwaitIsUsedInLineForBool([Values] bool? configureAwaitValue, [Values] bool hasConstraint, [Values] bool hasMessage)
+    public void AnalyzeWhenAwaitIsUsedInLineForBool([ValueSource(nameof(configureAwaitValues))] string configureAwait, [Values] bool hasConstraint, [Values] bool hasMessage)
     {
-        bool @true = true;
-        Assert.That(@true);
-        System.Console.WriteLine(Assert.ThatAsync(() => System.Threading.Tasks.Task.FromResult(@true), Is.True).IsFaulted);
-        Assert.That(@true, Is.True);
-        var configurAwait = configureAwaitValue switch
-        {
-            null => string.Empty,
-            true => ".ConfigureAwait(true)",
-            false => ".ConfigureAwait(false)",
-        };
         var testCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings($@"
         public async Task Test()
         {{
-            Assert.That(await GetBoolAsync(){configurAwait}{(hasConstraint ? ", Is.True" : "")}{(hasConstraint ? @", ""message""" : "")});
+            Assert.That(await GetBoolAsync(){configureAwait}{(hasConstraint ? ", Is.True" : "")}{(hasMessage ? @", ""message""" : "")});
         }}
 
         private static Task<bool> GetBoolAsync() => Task.FromResult(true);");
@@ -124,18 +114,12 @@ public sealed class UseAssertThatAsyncAnalyzerTests
     }
 
     [Test]
-    public void AnalyzeWhenAwaitIsUsedAsSecondArgument([Values] bool? configureAwaitValue)
+    public void AnalyzeWhenAwaitIsUsedAsSecondArgument([ValueSource(nameof(configureAwaitValues))] string configureAwait, [Values] bool hasMessage)
     {
-        var configurAwait = configureAwaitValue switch
-        {
-            null => string.Empty,
-            true => ".ConfigureAwait(true)",
-            false => ".ConfigureAwait(false)",
-        };
         var testCode = TestUtility.WrapMethodInClassNamespaceAndAddUsings($@"
         public async Task Test()
         {{
-            ↓Assert.That(expression: Is.EqualTo(42), actual: await GetIntAsync(){configurAwait});
+            ↓Assert.That(expression: Is.EqualTo(42), actual: await GetIntAsync(){configureAwait}{(hasMessage ? @", message: ""message""" : "")});
         }}
 
         private static Task<int> GetIntAsync() => Task.FromResult(42);");

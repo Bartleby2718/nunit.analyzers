@@ -20,8 +20,7 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
         NUnitFrameworkConstants.NameOfConditionParameter,
     };
 
-    public sealed override ImmutableArray<string> FixableDiagnosticIds
-        => ImmutableArray.Create(AnalyzerIdentifiers.UseAssertThatAsync);
+    public sealed override ImmutableArray<string> FixableDiagnosticIds => ImmutableArray.Create(AnalyzerIdentifiers.UseAssertThatAsync);
 
     public sealed override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
 
@@ -61,8 +60,9 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
             SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfAssert),
             SyntaxFactory.IdentifierName(NUnitFrameworkConstants.NameOfAssertThatAsync));
 
-        // If there's only one argument, is must have been Assert.That(bool).
-        // However, the overload Assert.ThatAsync(bool) doesn't exist, so add Is.True in that case.
+        // All overloads of Assert.ThatAsync have an IResolveConstraint parameter,
+        // but not all overloads of Assert.That do. Therefore, we add Is.True to
+        // those Assert.That(bool) overloads.
         var semanticModel = await context.Document.GetSemanticModelAsync(context.CancellationToken).ConfigureAwait(false);
         if (semanticModel is null)
             return;
@@ -70,7 +70,8 @@ public class UseAssertThatAsyncCodeFix : CodeFixProvider
             .Where(a => a != actualArgument)
             .Select(a => a.WithNameColon(null))
             .ToList();
-        var needToPrependIsTrue = !argumentList.Arguments.Any(a => ArgumentExtendsIResolveConstraint(a, semanticModel, context.CancellationToken));
+        var needToPrependIsTrue = !argumentList.Arguments
+            .Any(argument => ArgumentExtendsIResolveConstraint(argument, semanticModel, context.CancellationToken));
         if (needToPrependIsTrue)
         {
             nonLambdaArguments.Insert(

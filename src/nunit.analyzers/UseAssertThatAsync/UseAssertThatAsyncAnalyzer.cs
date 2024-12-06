@@ -26,8 +26,7 @@ public class UseAssertThatAsyncAnalyzer : BaseAssertionAnalyzer
         defaultSeverity: DiagnosticSeverity.Info,
         description: UseAssertThatAsyncConstants.Description);
 
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        ImmutableArray.Create(descriptor);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(descriptor);
 
     protected override void AnalyzeAssertInvocation(Version nunitVersion, OperationAnalysisContext context, IInvocationOperation assertOperation)
     {
@@ -42,6 +41,8 @@ public class UseAssertThatAsyncAnalyzer : BaseAssertionAnalyzer
             .Where(a => a.ArgumentKind == ArgumentKind.Explicit) // filter out arguments that were not explicitly passed in
             .ToArray();
 
+        // The first parameter is usually the "actual" parameter, but sometimes it's the "condition" parameter.
+        // Since the order is not guaranteed, let's just call it "actualArgument" here.
         var actualArgument = arguments.SingleOrDefault(a => firstParameterCandidates.Contains(a.Parameter?.Name))
             ?? arguments[0];
         if (actualArgument.Syntax is not ArgumentSyntax argumentSyntax || argumentSyntax.Expression is not AwaitExpressionSyntax awaitExpression)
